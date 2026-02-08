@@ -139,9 +139,9 @@ const QueryInput = ({ onSubmit, isLoading, externalQuery }: QueryInputProps) => 
       {/* Example queries */}
       <div className="mt-5 flex flex-wrap gap-2">
         {[
-          "Which regions lack emergency obstetric care?",
-          "Show facilities with unverified surgery claims",
-          "Where are the medical deserts?",
+          "Hospitals without emergency care",
+          "Facilities with maternity services",
+          "Clinics in Northern region",
         ].map((example) => (
           <button
             key={example}

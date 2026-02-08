@@ -1,0 +1,4 @@
+project_id = "paybsjsbmztcgtwpfvpc"
+
+[functions.ai-search]
+verify_jwt = false

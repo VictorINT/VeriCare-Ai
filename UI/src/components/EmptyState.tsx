@@ -2,6 +2,7 @@ import { Search, MapPin, ShieldCheck, FileText, ArrowRight, Building2, Globe, Al
 
 interface EmptyStateProps {
   onExampleClick: (query: string) => void;
+  onDirectSearch?: (region?: string, capability?: string) => void;
 }
 
 const steps = [
@@ -18,9 +19,9 @@ const features = [
 ];
 
 const exampleQueries = [
-  { query: "Which regions lack emergency obstetric care?", label: "Find coverage gaps", description: "Identify regions without verified emergency obstetric services" },
-  { query: "Show facilities with unverified surgery claims", label: "Detect unreliable claims", description: "Find facilities whose capabilities don't match their evidence" },
-  { query: "Where are the medical deserts?", label: "Map medical deserts", description: "See which regions are missing critical healthcare services" },
+  { label: "All hospitals in Ashanti", description: "Browse every facility in the Ashanti region", region: "Ashanti", capability: "All" },
+  { label: "Facilities with surgery", description: "Find hospitals that offer surgical services", region: "All Regions", capability: "surgery" },
+  { label: "View all hospitals", description: "Load every healthcare facility across Ghana", region: "All Regions", capability: "All" },
 ];
 
 const colorMap = {
@@ -49,7 +50,7 @@ const DiagonalDivider = ({ direction = "right", fromColor, toColor }: { directio
   </div>
 );
 
-const EmptyState = ({ onExampleClick }: EmptyStateProps) => {
+const EmptyState = ({ onExampleClick, onDirectSearch }: EmptyStateProps) => {
   return (
     <div className="animate-fade-in -mx-4 sm:-mx-6">
 
@@ -101,7 +102,7 @@ const EmptyState = ({ onExampleClick }: EmptyStateProps) => {
             {exampleQueries.map((example, i) => (
               <button
                 key={i}
-                onClick={() => onExampleClick(example.query)}
+                onClick={() => onDirectSearch?.(example.region, example.capability)}
                 className="glass-card-elevated rounded-2xl p-5 text-left group hover:border-primary/30 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-fade-in-up"
                 style={{ animationDelay: `${i * 0.1}s` }}
               >

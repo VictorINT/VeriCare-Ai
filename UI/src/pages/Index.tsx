@@ -153,7 +153,12 @@ const Index = () => {
 
       {/* ── Empty state sections ── */}
       {!data && !isLoading && (
-        <EmptyState onExampleClick={(q) => setExternalQuery(q)} />
+        <EmptyState
+          onExampleClick={(q) => setExternalQuery(q)}
+          onDirectSearch={(region, capability) => {
+            handleSubmit("", region || "All Regions", capability || "All");
+          }}
+        />
       )}
 
       {/* ── Footer ── */}

@@ -2,6 +2,33 @@ import { supabase } from "./supabase";
 import { lookupGhanaCoords } from "./ghanaCoordinates";
 import type { AnalysisResponse, Facility, Desert, EvidenceItem, Citation } from "@/data/mockData";
 
+interface AiSearchResult {
+  search_terms: string[];
+  negate: boolean;
+  region: string;
+  error?: string;
+}
+
+async function aiParseQuery(query: string): Promise<AiSearchResult | null> {
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-search`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ query }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data.error) return null;
+    return data as AiSearchResult;
+  } catch {
+    return null;
+  }
+}
+
 interface HospitalRow {
   id: string;
   name: string;
@@ -249,32 +276,71 @@ function buildResponse(
 
 const FIRST_BATCH = 200;
 
+// Fallback keyword extraction when AI is unavailable
+function extractKeywords(raw: string): string[] {
+  const stopWords = new Set([
+    "which", "what", "where", "how", "many", "are", "is", "the", "a", "an",
+    "in", "on", "of", "to", "for", "with", "do", "does", "has", "have",
+    "show", "find", "list", "get", "give", "me", "all", "any", "that",
+    "this", "those", "these", "and", "or", "not", "no", "can", "could",
+    "will", "would", "should", "there", "their", "them", "they", "it",
+    "its", "been", "being", "was", "were", "be", "about", "from", "by",
+    "at", "lack", "lacking", "without", "missing", "need", "needs",
+    "facilities", "facility", "hospital", "hospitals", "regions", "region",
+    "claims", "claim", "unverified", "verified",
+  ]);
+  return raw
+    .toLowerCase()
+    .replace(/[?!.,;:'"()]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopWords.has(w));
+}
+
 export async function fetchHospitals(
   query?: string,
   region?: string,
   capability?: string,
   onPartial?: (data: AnalysisResponse) => void
 ): Promise<AnalysisResponse> {
+  let keywords: string[] = [];
+  let negate = false;
+
+  if (query && query.trim()) {
+    const aiResult = await aiParseQuery(query);
+    if (aiResult) {
+      keywords = aiResult.search_terms;
+      negate = aiResult.negate;
+      if (aiResult.region && (!region || region === "All Regions")) {
+        region = aiResult.region;
+      }
+      console.log("AI parsed:", { keywords, negate, region });
+    } else {
+      keywords = extractKeywords(query);
+    }
+  }
+
+  // For negate queries, we fetch ALL facilities and filter client-side
+  // For positive queries, we filter at DB level
   const buildQuery = () => {
     let q = supabase.from("hospitals").select("*");
-    if (query && query.trim()) {
-      q = q.or(`name.ilike.%${query}%,description.ilike.%${query}%`);
+    if (!negate && keywords.length > 0) {
+      const filters = keywords.map((kw) =>
+        `name.ilike.%${kw}%,description.ilike.%${kw}%,client_capability.ilike.%${kw}%,reliability.ilike.%${kw}%`
+      );
+      q = q.or(filters.join(","));
     }
     return q;
   };
 
-  // Fast first batch
   const { data: firstData, error: firstError } = await buildQuery().range(0, FIRST_BATCH - 1);
   if (firstError) throw new Error(`Failed to fetch hospitals: ${firstError.message}`);
 
   const firstRows = (firstData || []) as HospitalRow[];
   let allFacilities = firstRows.map(mapHospitalToFacility);
 
-  // Emit partial results immediately
   const partial = buildResponse([...allFacilities], region, capability);
   if (onPartial) onPartial(partial);
 
-  // If first batch was full, load the rest in the background
   if (firstRows.length >= FIRST_BATCH) {
     const PAGE_SIZE = 1000;
     let from = FIRST_BATCH;
@@ -288,6 +354,20 @@ export async function fetchHospitals(
       if (data.length < PAGE_SIZE) break;
       from += PAGE_SIZE;
     }
+  }
+
+  // For negate queries, filter out facilities that DO have the searched terms
+  if (negate && keywords.length > 0) {
+    allFacilities = allFacilities.filter((f) => {
+      const allText = [
+        ...f.capabilities,
+        ...f.specialties,
+        ...f.procedures,
+        ...f.equipment,
+        f.name,
+      ].join(" ").toLowerCase();
+      return !keywords.some((kw) => allText.includes(kw.toLowerCase()));
+    });
   }
 
   return buildResponse(allFacilities, region, capability);
